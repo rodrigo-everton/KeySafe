@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -16,7 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onLock: () -> Unit = {}
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -31,13 +35,20 @@ fun SettingsScreen(onBack: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
+        Button(onClick = onLock, modifier = Modifier.fillMaxWidth()) {
+            Text("Bloquear cofre agora")
+        }
+        SettingInfoCard(
+            title = "Senha mestra",
+            description = "Ativada. A senha mestra protege a chave aleatória usada para abrir o cofre."
+        )
         SettingInfoCard(
             title = "Autenticação biométrica",
             description = "Pendente: integrar o BiometricPrompt e o desbloqueio da chave criptográfica."
         )
         SettingInfoCard(
             title = "Bloqueio automático",
-            description = "Pendente: exigir nova autenticação após inatividade ou ao retornar do segundo plano."
+            description = "O cofre é bloqueado automaticamente quando o aplicativo vai para segundo plano. Tempo de inatividade dentro do app ainda não implementado."
         )
         SettingInfoCard(
             title = "Armazenamento offline",

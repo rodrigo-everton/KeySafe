@@ -94,6 +94,7 @@ fun AddCredentialScreen(
                 onValueChange = { username = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Usuário ou e-mail") },
+                placeholder = { Text("Ex.: name@address.com")},
                 singleLine = true
             )
             OutlinedTextField(
