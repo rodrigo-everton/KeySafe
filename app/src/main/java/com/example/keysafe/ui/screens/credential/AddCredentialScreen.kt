@@ -17,8 +17,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,7 +24,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,9 +31,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 
-/** Dados de entrada, ainda sem criptografia. Não persistir diretamente no Room. */
+/** Dados sensíveis em memória; o ViewModel cifra antes de chamar o Room. */
 data class CredentialFormData(
     val title: String,
     val username: String,
@@ -50,7 +46,9 @@ data class CredentialFormData(
 @Composable
 fun AddCredentialScreen(
     onBack: () -> Unit,
-    onSave: ((CredentialFormData) -> Unit)? = null
+    onSave: (CredentialFormData) -> Unit,
+    isSaving: Boolean = false,
+    errorMessage: String? = null
 ) {
     // Não usar rememberSaveable para dados sensíveis: isso pode levá-los ao saved instance state.
     var title by remember { mutableStateOf("") }
@@ -62,11 +60,9 @@ fun AddCredentialScreen(
     var favorite by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
 
-    val snackbarHostState = remember { SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
     val categories = listOf("Geral", "Trabalho", "Redes sociais", "Finanças", "Estudos")
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
+    Scaffold { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -75,7 +71,7 @@ fun AddCredentialScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            TextButton(onClick = onBack) { Text("← Voltar") }
+            TextButton(onClick = onBack, enabled = !isSaving) { Text("← Voltar") }
             Text("Nova credencial", style = MaterialTheme.typography.headlineMedium)
             Text(
                 "Preencha os dados que serão protegidos no cofre.",
@@ -94,7 +90,6 @@ fun AddCredentialScreen(
                 onValueChange = { username = it },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Usuário ou e-mail") },
-                placeholder = { Text("Ex.: name@address.com")},
                 singleLine = true
             )
             OutlinedTextField(
@@ -151,33 +146,30 @@ fun AddCredentialScreen(
                 Switch(checked = favorite, onCheckedChange = { favorite = it })
             }
             Spacer(modifier = Modifier.height(4.dp))
+            if (errorMessage != null) {
+                Text(errorMessage, color = MaterialTheme.colorScheme.error)
+            }
             Button(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = title.isNotBlank() && password.isNotBlank(),
+                enabled = !isSaving && title.isNotBlank() && password.isNotBlank(),
                 onClick = {
-                    if (onSave == null) {
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("Nenhum dado foi salvo: conecte o Repository e a criptografia.")
-                        }
-                    } else {
-                        onSave(
-                            CredentialFormData(
-                                title = title.trim(),
-                                username = username.trim(),
-                                password = password,
-                                url = url.trim(),
-                                notes = notes,
-                                category = category,
-                                favorite = favorite
-                            )
+                    onSave(
+                        CredentialFormData(
+                            title = title.trim(),
+                            username = username.trim(),
+                            password = password,
+                            url = url.trim(),
+                            notes = notes,
+                            category = category,
+                            favorite = favorite
                         )
-                    }
+                    )
                 }
             ) {
-                Text("Salvar credencial")
+                Text(if (isSaving) "Salvando..." else "Salvar credencial")
             }
             Text(
-                "* Campos obrigatórios. A senha deve ser criptografada antes de qualquer gravação.",
+                "* Campos obrigatórios. Todo o cadastro será criptografado antes de ir para o Room.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

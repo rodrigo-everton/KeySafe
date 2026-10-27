@@ -28,15 +28,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.keysafe.data.model.Credential
+import com.example.keysafe.data.model.CredentialSummary
 
 @Composable
 fun HomeScreen(
     onAddCredential: () -> Unit,
     onPasswordGenerator: () -> Unit,
     onSettings: () -> Unit,
-    credentials: List<Credential> = emptyList(),
-    onCredentialSelected: ((Credential) -> Unit)? = null
+    credentials: List<CredentialSummary> = emptyList(),
+    loading: Boolean = false,
+    errorMessage: String? = null,
+    onCredentialSelected: ((CredentialSummary) -> Unit)? = null
 ) {
     var search by remember { mutableStateOf("") }
     var favoritesOnly by remember { mutableStateOf(false) }
@@ -101,7 +103,15 @@ fun HomeScreen(
             }
         }
 
-        if (filteredCredentials.isEmpty()) {
+        if (errorMessage != null) {
+            item {
+                Text(errorMessage, color = MaterialTheme.colorScheme.error)
+            }
+        }
+
+        if (loading) {
+            item { Text("Carregando credenciais...") }
+        } else if (filteredCredentials.isEmpty()) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(20.dp)) {
@@ -112,7 +122,7 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = if (credentials.isEmpty()) {
-                                "As senhas aparecerão aqui após a integração com o banco de dados criptografado."
+                                "Toque em Adicionar credencial para cadastrar a primeira senha no cofre criptografado."
                             } else {
                                 "Tente outra pesquisa ou desative o filtro de favoritas."
                             },
@@ -134,7 +144,7 @@ fun HomeScreen(
 
 @Composable
 private fun CredentialCard(
-    credential: Credential,
+    credential: CredentialSummary,
     onOpen: (() -> Unit)?
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {

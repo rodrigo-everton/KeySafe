@@ -52,7 +52,7 @@ fun SettingsScreen(
         )
         SettingInfoCard(
             title = "Armazenamento offline",
-            description = "Pendente: conectar Room, Repository e criptografia dos campos sensíveis. Estas telas não enviam dados para servidores."
+            description = "Ativado: credenciais persistidas localmente no Room com todos os campos protegidos por AES-256-GCM. Não há sincronização com servidores."
         )
         SettingInfoCard(
             title = "Backup e recuperação",
