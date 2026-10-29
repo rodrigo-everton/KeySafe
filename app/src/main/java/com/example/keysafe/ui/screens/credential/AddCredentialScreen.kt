@@ -48,16 +48,18 @@ fun AddCredentialScreen(
     onBack: () -> Unit,
     onSave: (CredentialFormData) -> Unit,
     isSaving: Boolean = false,
-    errorMessage: String? = null
+    errorMessage: String? = null,
+    initialData: CredentialFormData? = null,
+    isEditing: Boolean = false
 ) {
     // Não usar rememberSaveable para dados sensíveis: isso pode levá-los ao saved instance state.
-    var title by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var url by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("Geral") }
-    var favorite by remember { mutableStateOf(false) }
+    var title by remember(initialData) { mutableStateOf(initialData?.title ?: "") }
+    var username by remember(initialData) { mutableStateOf(initialData?.username ?: "") }
+    var password by remember(initialData) { mutableStateOf(initialData?.password ?: "") }
+    var url by remember(initialData) { mutableStateOf(initialData?.url ?: "") }
+    var notes by remember(initialData) { mutableStateOf(initialData?.notes ?: "") }
+    var category by remember(initialData) { mutableStateOf(initialData?.category ?: "Geral") }
+    var favorite by remember(initialData) { mutableStateOf(initialData?.favorite ?: false) }
     var passwordVisible by remember { mutableStateOf(false) }
 
     val categories = listOf("Geral", "Trabalho", "Redes sociais", "Finanças", "Estudos")
@@ -72,9 +74,9 @@ fun AddCredentialScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             TextButton(onClick = onBack, enabled = !isSaving) { Text("← Voltar") }
-            Text("Nova credencial", style = MaterialTheme.typography.headlineMedium)
+            Text(if (isEditing) "Editar credencial" else "Nova credencial", style = MaterialTheme.typography.headlineMedium)
             Text(
-                "Preencha os dados que serão protegidos no cofre.",
+                if (isEditing) "Atualize os dados protegidos no cofre." else "Preencha os dados que serão protegidos no cofre.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             OutlinedTextField(
@@ -166,7 +168,7 @@ fun AddCredentialScreen(
                     )
                 }
             ) {
-                Text(if (isSaving) "Salvando..." else "Salvar credencial")
+                Text(if (isSaving) "Salvando..." else if (isEditing) "Salvar alterações" else "Salvar credencial")
             }
             Text(
                 "* Campos obrigatórios. Todo o cadastro será criptografado antes de ir para o Room.",

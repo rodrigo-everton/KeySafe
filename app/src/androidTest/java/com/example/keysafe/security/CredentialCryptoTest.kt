@@ -6,66 +6,88 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.UUID
 import javax.crypto.AEADBadTagException
 import javax.crypto.KeyGenerator
 
-/** Executar no dispositivo/emulador Android (org.json do framework). */
+/** Teste instrumentado: usa org.json do Android. */
 class CredentialCryptoTest {
     private val crypto = CredentialCrypto()
 
-    private fun aesKey() = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+    private fun key() = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
 
     private val draft = CredentialDraft(
-        title = "Conta de teste",
+        title = "Exemplo",
         username = "usuario@exemplo.com",
-        password = "S3gredo-teste!",
+        password = "SenhaAntiga123!",
         url = "https://exemplo.com",
         notes = "Anotações privadas",
         category = "Trabalho",
-        favorite = true
+        favorite = false
     )
 
     @Test
-    fun roundTripAndNoPlaintext() {
-        val key = aesKey()
-        val one = crypto.encrypt(draft, key)
-        val two = crypto.encrypt(draft, key)
-        assertNotEquals(one.id, two.id)
-        assertFalse(one.encryptedPayload.toString(Charsets.ISO_8859_1).contains(draft.password))
-        assertFalse(one.encryptedPayload.toString(Charsets.ISO_8859_1).contains(draft.username))
-        assertEquals(draft, crypto.decryptDraft(one, key))
-        assertEquals(draft.title, crypto.decryptSummary(one, key).title)
+    fun roundTripAndSummaryHidePassword() {
+        val secret = key()
+        val record = crypto.encrypt(draft, secret)
+        assertEquals(draft, crypto.decryptDraft(record, secret))
+        assertEquals(draft.title, crypto.decryptSummary(record, secret).title)
+        assertFalse(record.encryptedPayload.toString(Charsets.ISO_8859_1).contains(draft.password))
     }
 
     @Test
-    fun wrongKeyFailsAuthentication() {
-        val credential = crypto.encrypt(draft, aesKey())
+    fun updatePreservesIdAndCreatedAtAndChangesEncryptedPayload() {
+        val secret = key()
+        val initial = crypto.encrypt(draft, secret)
+        val before = crypto.decryptDetails(initial, secret)
+        val changed = draft.copy(
+            title = "Exemplo editado",
+            username = "outro@exemplo.com",
+            password = "SenhaNova456!",
+            notes = "Notas editadas",
+            favorite = true
+        )
+        val updated = crypto.update(initial, changed, secret)
+        val after = crypto.decryptDetails(updated, secret)
+
+        assertEquals(initial.id, updated.id)
+        assertEquals(before.createdAt, after.createdAt)
+        assertTrue(after.updatedAt > before.updatedAt)
+        assertEquals(changed, after.draft)
+        assertFalse(initial.encryptedPayload.contentEquals(updated.encryptedPayload))
+        assertEquals(draft, crypto.decryptDraft(initial, secret))
+    }
+
+    @Test
+    fun repeatedEditsUseDifferentNonces() {
+        val secret = key()
+        val initial = crypto.encrypt(draft, secret)
+        val edit1 = crypto.update(initial, draft, secret)
+        val edit2 = crypto.update(edit1, draft, secret)
+        assertNotEquals(
+            edit1.encryptedPayload.sliceArray(1..12).toList(),
+            edit2.encryptedPayload.sliceArray(1..12).toList()
+        )
+    }
+
+    @Test
+    fun incorrectKeyTamperingAndIdSwappingFail() {
+        val secret = key()
+        val initial = crypto.encrypt(draft, secret)
         assertThrows(AEADBadTagException::class.java) {
-            crypto.decryptDraft(credential, aesKey())
+            crypto.decryptDetails(initial, key())
         }
-    }
-
-    @Test
-    fun tamperFailsAuthentication() {
-        val key = aesKey()
-        val credential = crypto.encrypt(draft, key)
-        val tampered = credential.encryptedPayload.clone().also {
+        val altered = initial.copy(encryptedPayload = initial.encryptedPayload.clone().also {
             it[it.lastIndex] = (it.last().toInt() xor 1).toByte()
-        }
+        })
         assertThrows(AEADBadTagException::class.java) {
-            crypto.decryptDraft(credential.copy(encryptedPayload = tampered), key)
+            crypto.update(altered, draft, secret)
         }
-    }
-
-    @Test
-    fun ciphertextCannotBeMovedToAnotherId() {
-        val key = aesKey()
-        val credential = crypto.encrypt(draft, key)
-        val moved = Credential(UUID.randomUUID().toString(), credential.encryptedPayload)
+        val swapped = Credential(UUID.randomUUID().toString(), initial.encryptedPayload)
         assertThrows(AEADBadTagException::class.java) {
-            crypto.decryptDraft(moved, key)
+            crypto.decryptDetails(swapped, secret)
         }
     }
 }

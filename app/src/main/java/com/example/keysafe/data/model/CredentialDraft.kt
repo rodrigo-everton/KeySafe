@@ -1,6 +1,6 @@
 package com.example.keysafe.data.model
 
-/** Dados em memória, nunca salvar diretamente no SQLite ou em logs. */
+/** Usado somente na memória da sessão desbloqueada; nunca persistir como JSON aberto. */
 data class CredentialDraft(
     val title: String,
     val username: String,
@@ -11,7 +11,7 @@ data class CredentialDraft(
     val favorite: Boolean
 )
 
-/** Apenas metadados em memória para a Home; a senha nunca aparece nessa lista. */
+/** Resumo em memória para a lista, sem a senha. */
 data class CredentialSummary(
     val id: String,
     val title: String,
@@ -19,5 +19,13 @@ data class CredentialSummary(
     val url: String,
     val category: String,
     val favorite: Boolean,
+    val updatedAt: Long
+)
+
+/** Detalhes decifrados somente durante uma sessão ativa. */
+data class CredentialDetails(
+    val id: String,
+    val draft: CredentialDraft,
+    val createdAt: Long,
     val updatedAt: Long
 )

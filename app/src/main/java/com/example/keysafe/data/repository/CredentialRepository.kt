@@ -2,6 +2,7 @@ package com.example.keysafe.data.repository
 
 import com.example.keysafe.data.local.CredentialDao
 import com.example.keysafe.data.model.Credential
+import com.example.keysafe.data.model.CredentialDetails
 import com.example.keysafe.data.model.CredentialDraft
 import com.example.keysafe.data.model.CredentialSummary
 import com.example.keysafe.security.CredentialCrypto
@@ -11,15 +12,22 @@ import javax.crypto.SecretKey
 class CredentialRepository(private val dao: CredentialDao) {
     private val crypto = CredentialCrypto()
 
-    // O fluxo do Room contém APENAS bytes criptografados.
     fun observeEncrypted(): Flow<List<Credential>> = dao.observeAll()
+    suspend fun findEncrypted(id: String): Credential? = dao.findById(id)
 
-    // A chave só é recebida enquanto a senha mestra desbloqueou o cofre.
     fun encrypt(draft: CredentialDraft, key: SecretKey): Credential =
         crypto.encrypt(draft, key)
 
-    fun decryptSummary(credential: Credential, key: SecretKey): CredentialSummary =
-        crypto.decryptSummary(credential, key)
+    fun encryptUpdate(existing: Credential, draft: CredentialDraft, key: SecretKey): Credential =
+        crypto.update(existing, draft, key)
 
-    suspend fun insertEncrypted(credential: Credential) = dao.insert(credential)
+    fun decryptSummary(entity: Credential, key: SecretKey): CredentialSummary =
+        crypto.decryptSummary(entity, key)
+
+    fun decryptDetails(entity: Credential, key: SecretKey): CredentialDetails =
+        crypto.decryptDetails(entity, key)
+
+    suspend fun insertEncrypted(entity: Credential) = dao.insert(entity)
+    suspend fun updateEncrypted(entity: Credential): Int = dao.update(entity)
+    suspend fun deleteById(id: String): Int = dao.deleteById(id)
 }

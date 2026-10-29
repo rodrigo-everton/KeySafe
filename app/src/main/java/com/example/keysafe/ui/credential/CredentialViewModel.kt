@@ -18,14 +18,22 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * Mantém SOMENTE resumos decifrados enquanto o cofre está desbloqueado.
- * Não mantém a senha da credencial em listas ou em estados observáveis.
- */
+/** Somente metadados — nunca colocar a senha na lista. */
 data class CredentialUiState(
     val credentials: List<CredentialSummary> = emptyList(),
     val loading: Boolean = true,
     val saving: Boolean = false,
+    val errorMessage: String? = null
+)
+
+/** Dados de detalhes devem existir apenas enquanto uma sessão está desbloqueada. */
+data class CredentialDetailUiState(
+    val id: String? = null,
+    val loading: Boolean = false,
+    val draft: CredentialDraft? = null,
+    val createdAt: Long? = null,
+    val updatedAt: Long? = null,
+    val busy: Boolean = false,
     val errorMessage: String? = null
 )
 
@@ -37,48 +45,64 @@ class CredentialViewModel(application: Application) : AndroidViewModel(applicati
     private val _uiState = MutableStateFlow(CredentialUiState())
     val uiState: StateFlow<CredentialUiState> = _uiState.asStateFlow()
 
+    private val _detailState = MutableStateFlow(CredentialDetailUiState())
+    val detailState: StateFlow<CredentialDetailUiState> = _detailState.asStateFlow()
+
     private var observeJob: Job? = null
     private var saveJob: Job? = null
-    private var generation: Long = 0L
+    private var detailJob: Job? = null
+    private var mutationJob: Job? = null
+    private var generation = 0L
+    private var detailRequest = 0L
 
-    /** Começa a observar o Room apenas dentro de uma sessão autenticada. */
     fun startSession(auth: MasterPasswordViewModel) {
         stopSession()
         if (auth.uiState.mode != AuthMode.UNLOCKED) return
         val session = generation
         _uiState.value = CredentialUiState()
+
         observeJob = viewModelScope.launch {
             try {
-                repository.observeEncrypted().collectLatest { rows ->
-                    // Faz o uso da chave na thread principal, dentro do bloco seguro.
+                repository.observeEncrypted().collectLatest { encryptedRows ->
                     val summaries = auth.withUnlockedVaultKey { key ->
-                        rows.map { repository.decryptSummary(it, key) }
+                        encryptedRows.map { repository.decryptSummary(it, key) }
                             .sortedByDescending { it.updatedAt }
                     }
-                    if (session == generation && auth.uiState.mode == AuthMode.UNLOCKED) {
-                        _uiState.update { it.copy(credentials = summaries, loading = false, errorMessage = null) }
+                    if (sessionAlive(session, auth)) {
+                        _uiState.update {
+                            it.copy(credentials = summaries, loading = false, errorMessage = null)
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                if (session == generation && auth.uiState.mode == AuthMode.UNLOCKED) {
-                    // Não faz fallback para conteúdo parcialmente decifrado.
-                    _uiState.update { it.copy(credentials = emptyList(), loading = false,
-                        errorMessage = "Falha ao ler uma credencial. O banco pode estar corrompido.") }
+                if (sessionAlive(session, auth)) {
+                    _uiState.update {
+                        it.copy(
+                            credentials = emptyList(), loading = false,
+                            errorMessage = "Falha ao ler o cofre. Verifique a integridade dos dados."
+                        )
+                    }
                 }
             }
         }
     }
 
-    /** Cancela leituras/gravações pendentes e descarta resumos decifrados. */
     fun stopSession() {
         generation++
+        detailRequest++
         observeJob?.cancel()
         saveJob?.cancel()
+        detailJob?.cancel()
+        mutationJob?.cancel()
         observeJob = null
         saveJob = null
-        _uiState.value = CredentialUiState(credentials = emptyList(), loading = false)
+        detailJob = null
+        mutationJob = null
+        _uiState.value = CredentialUiState(loading = false)
+        // Descarta o conteúdo decifrado dos detalhes (inclusive a senha) ao bloquear.
+        _detailState.value = CredentialDetailUiState()
     }
 
     fun save(
@@ -91,23 +115,157 @@ class CredentialViewModel(application: Application) : AndroidViewModel(applicati
         _uiState.update { it.copy(saving = true, errorMessage = null) }
         saveJob = viewModelScope.launch {
             try {
-                // CRIPTOGRAFIA ANTES do DAO. A senha nunca é enviada para o SQLite.
                 val encrypted = auth.withUnlockedVaultKey { key -> repository.encrypt(draft, key) }
                 repository.insertEncrypted(encrypted)
-                if (session == generation && auth.uiState.mode == AuthMode.UNLOCKED) {
+                if (sessionAlive(session, auth)) {
                     _uiState.update { it.copy(saving = false, errorMessage = null) }
                     onSaved()
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                if (session == generation && auth.uiState.mode == AuthMode.UNLOCKED) {
-                    _uiState.update { it.copy(saving = false,
-                        errorMessage = "Não foi possível salvar a credencial.") }
+                if (sessionAlive(session, auth)) {
+                    _uiState.update {
+                        it.copy(saving = false, errorMessage = "Não foi possível salvar a credencial.")
+                    }
                 }
             }
         }
     }
+
+    /** Busca somente o UUID solicitado; o Room retorna os bytes cifrados. */
+    fun loadDetails(auth: MasterPasswordViewModel, id: String) {
+        if (auth.uiState.mode != AuthMode.UNLOCKED) return
+        if (_detailState.value.id == id && _detailState.value.draft != null) return
+        if (_detailState.value.busy) return
+
+        detailJob?.cancel()
+        val request = ++detailRequest
+        val session = generation
+        _detailState.value = CredentialDetailUiState(id = id, loading = true)
+
+        detailJob = viewModelScope.launch {
+            try {
+                val encrypted = repository.findEncrypted(id)
+                    ?: error("Credencial não encontrada.")
+                val details = auth.withUnlockedVaultKey { key ->
+                    repository.decryptDetails(encrypted, key)
+                }
+                if (sessionAlive(session, auth) && request == detailRequest) {
+                    _detailState.value = CredentialDetailUiState(
+                        id = details.id,
+                        draft = details.draft,
+                        createdAt = details.createdAt,
+                        updatedAt = details.updatedAt
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (sessionAlive(session, auth) && request == detailRequest) {
+                    _detailState.value = CredentialDetailUiState(
+                        id = id,
+                        errorMessage = "Não foi possível abrir a credencial."
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearDetails() {
+        detailRequest++
+        detailJob?.cancel()
+        // Uma edição/exclusão em andamento não deve ser ignorada pela navegação.
+        // O bloqueio real da sessão continua cancelando mutationJob.
+        _detailState.value = CredentialDetailUiState()
+    }
+
+    fun update(
+        auth: MasterPasswordViewModel,
+        id: String,
+        draft: CredentialDraft,
+        onUpdated: () -> Unit
+    ) {
+        if (!canMutate(auth, id)) return
+        val session = generation
+        _detailState.update { it.copy(busy = true, errorMessage = null) }
+
+        mutationJob = viewModelScope.launch {
+            try {
+                val current = repository.findEncrypted(id)
+                    ?: error("Credencial não encontrada.")
+                val updated = auth.withUnlockedVaultKey { key ->
+                    repository.encryptUpdate(current, draft, key)
+                }
+                check(repository.updateEncrypted(updated) == 1) {
+                    "A credencial não existe mais."
+                }
+                if (sessionAlive(session, auth)) {
+                    val details = auth.withUnlockedVaultKey { key ->
+                        repository.decryptDetails(updated, key)
+                    }
+                    _detailState.value = CredentialDetailUiState(
+                        id = id,
+                        draft = details.draft,
+                        createdAt = details.createdAt,
+                        updatedAt = details.updatedAt
+                    )
+                    onUpdated()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (sessionAlive(session, auth)) {
+                    _detailState.update {
+                        it.copy(busy = false, errorMessage = "Não foi possível atualizar a credencial.")
+                    }
+                }
+            }
+        }
+    }
+
+    fun delete(
+        auth: MasterPasswordViewModel,
+        id: String,
+        onDeleted: () -> Unit
+    ) {
+        if (!canMutate(auth, id)) return
+        val session = generation
+        _detailState.update { it.copy(busy = true, errorMessage = null) }
+
+        mutationJob = viewModelScope.launch {
+            try {
+                val encrypted = repository.findEncrypted(id)
+                    ?: error("Credencial não encontrada.")
+                // Não excluir silenciosamente registros que falham na autenticação AES-GCM.
+                auth.withUnlockedVaultKey { key -> repository.decryptSummary(encrypted, key) }
+                check(repository.deleteById(id) == 1) {
+                    "A credencial não existe mais."
+                }
+                if (sessionAlive(session, auth)) {
+                    clearDetails()
+                    onDeleted()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (sessionAlive(session, auth)) {
+                    _detailState.update {
+                        it.copy(busy = false, errorMessage = "Não foi possível excluir a credencial.")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun canMutate(auth: MasterPasswordViewModel, id: String): Boolean =
+        auth.uiState.mode == AuthMode.UNLOCKED &&
+            _detailState.value.id == id &&
+            _detailState.value.draft != null &&
+            !_detailState.value.busy
+
+    private fun sessionAlive(session: Long, auth: MasterPasswordViewModel): Boolean =
+        session == generation && auth.uiState.mode == AuthMode.UNLOCKED
 
     override fun onCleared() {
         stopSession()
