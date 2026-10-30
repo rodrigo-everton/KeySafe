@@ -19,7 +19,13 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onLock: () -> Unit = {}
+    onLock: () -> Unit = {},
+    biometricConfigured: Boolean = false,
+    biometricAvailable: Boolean = false,
+    biometricBusy: Boolean = false,
+    biometricMessage: String? = null,
+    onEnableBiometric: () -> Unit = {},
+    onDisableBiometric: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -44,8 +50,35 @@ fun SettingsScreen(
         )
         SettingInfoCard(
             title = "Autenticação biométrica",
-            description = "Pendente: integrar o BiometricPrompt e o desbloqueio da chave criptográfica."
+            description = if (biometricConfigured)
+                "Ativada: outra cópia cifrada da chave do cofre é protegida pelo Android Keystore. A senha mestra permanece válida."
+            else
+                "Desativada: habilite após registrar uma biometria forte nas configurações do Android."
         )
+        if (biometricConfigured) {
+            Button(
+                onClick = onDisableBiometric,
+                enabled = !biometricBusy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Desativar biometria") }
+        } else {
+            Button(
+                onClick = onEnableBiometric,
+                enabled = biometricAvailable && !biometricBusy,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (biometricBusy) "Aguardando confirmação…" else "Ativar desbloqueio biométrico")
+            }
+            if (!biometricAvailable) {
+                Text(
+                    "Biometria forte não disponível ou não cadastrada neste dispositivo.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (biometricMessage != null) {
+            Text(biometricMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         SettingInfoCard(
             title = "Bloqueio automático",
             description = "O cofre é bloqueado automaticamente quando o aplicativo vai para segundo plano. Tempo de inatividade dentro do app ainda não implementado."

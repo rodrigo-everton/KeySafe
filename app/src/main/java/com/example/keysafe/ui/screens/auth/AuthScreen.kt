@@ -38,7 +38,12 @@ fun AuthScreen(
     isLoading: Boolean,
     errorMessage: String?,
     onCreateMasterPassword: (String) -> Unit,
-    onUnlock: (String) -> Unit
+    onUnlock: (String) -> Unit,
+    biometricConfigured: Boolean = false,
+    biometricAvailable: Boolean = false,
+    biometricBusy: Boolean = false,
+    biometricMessage: String? = null,
+    onBiometricUnlock: () -> Unit = {}
 ) {
     // Nunca usar rememberSaveable para senhas: persiste em savedInstanceState.
     var password by remember(mode) { mutableStateOf("") }
@@ -139,6 +144,24 @@ fun AuthScreen(
                         } else {
                             Text(if (creating) "Criar e desbloquear" else "Desbloquear")
                         }
+                    }
+                    if (mode == AuthMode.LOCKED && biometricConfigured) {
+                        Button(
+                            onClick = onBiometricUnlock,
+                            enabled = !isLoading && !biometricBusy && biometricAvailable,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (biometricBusy) "Aguardando biometria…" else "Desbloquear com biometria")
+                        }
+                        if (!biometricAvailable) {
+                            Text(
+                                "A biometria forte está indisponível neste dispositivo. Use a senha mestra.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    if (biometricMessage != null) {
+                        Text(biometricMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (mode == AuthMode.CORRUPTED) {

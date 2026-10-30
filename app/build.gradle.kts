@@ -50,6 +50,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.navigation.compose)
 
+    implementation("androidx.biometric:biometric:1.1.0")
+
     // Room 3
     val roomVersion = "3.0.3"
 

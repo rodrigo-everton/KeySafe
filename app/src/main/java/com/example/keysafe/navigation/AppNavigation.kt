@@ -28,7 +28,9 @@ import com.example.keysafe.ui.screens.settings.SettingsScreen
 @Composable
 fun AppNavigation(
     authViewModel: MasterPasswordViewModel,
-    credentialViewModel: CredentialViewModel
+    credentialViewModel: CredentialViewModel,
+    onBiometricUnlock: () -> Unit,
+    onEnableBiometric: () -> Unit
 ) {
     val authState = authViewModel.uiState
     if (authState.mode != AuthMode.UNLOCKED) {
@@ -37,7 +39,12 @@ fun AppNavigation(
             isLoading = authState.loading,
             errorMessage = authState.error,
             onCreateMasterPassword = authViewModel::create,
-            onUnlock = authViewModel::unlock
+            onUnlock = authViewModel::unlock,
+            biometricConfigured = authViewModel.biometricConfigured,
+            biometricAvailable = authViewModel.biometricAvailable,
+            biometricBusy = authViewModel.biometricBusy,
+            biometricMessage = authViewModel.biometricMessage,
+            onBiometricUnlock = onBiometricUnlock
         )
         return
     }
@@ -145,7 +152,13 @@ fun AppNavigation(
                 onLock = {
                     credentialViewModel.stopSession()
                     authViewModel.lock()
-                }
+                },
+                biometricConfigured = authViewModel.biometricConfigured,
+                biometricAvailable = authViewModel.biometricAvailable,
+                biometricBusy = authViewModel.biometricBusy,
+                biometricMessage = authViewModel.biometricMessage,
+                onEnableBiometric = onEnableBiometric,
+                onDisableBiometric = authViewModel::disableBiometrics
             )
         }
     }
