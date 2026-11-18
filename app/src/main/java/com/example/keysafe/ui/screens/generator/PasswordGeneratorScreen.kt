@@ -14,10 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -116,13 +119,35 @@ fun PasswordGeneratorScreen(onBack: () -> Unit) {
                         .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = if (showPassword) password else "•".repeat(password.length),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = if (showPassword) password else "•".repeat(password.length),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = {
+                                copySensitiveText(context, "Senha gerada", password)
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        "Senha copiada para a área de transferência."
+                                    )
+                                }
+                            },
+                            enabled = password.isNotEmpty()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ContentCopy,
+                                contentDescription = "Copiar senha"
+                            )
+                        }
+                    }
                     TextButton(
                         onClick = { showPassword = !showPassword },
                         modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -159,23 +184,6 @@ fun PasswordGeneratorScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Gerar nova senha") }
 
-            OutlinedButton(
-                onClick = {
-                    val clip = ClipData.newPlainText("Senha gerada", password)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        clip.description.extras = PersistableBundle().apply {
-                            putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
-                        }
-                    }
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(clip)
-                    scope.launch {
-                        snackbarHostState.showSnackbar("Senha copiada. Evite mantê-la na área de transferência.")
-                    }
-                },
-                enabled = password.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Copiar senha") }
             Text(
                 "Se alterar os critérios, toque em “Gerar nova senha” para atualizar o resultado.",
                 style = MaterialTheme.typography.bodySmall,
@@ -198,4 +206,16 @@ private fun CharacterOption(
         Text(label, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+/** Copia como conteúdo sensível para evitar prévias da senha em versões compatíveis do Android. */
+private fun copySensitiveText(context: Context, label: String, value: String) {
+    val clip = ClipData.newPlainText(label, value)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        clip.description.extras = PersistableBundle().apply {
+            putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+        }
+    }
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(clip)
 }

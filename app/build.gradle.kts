@@ -52,6 +52,8 @@ dependencies {
 
     implementation("androidx.biometric:biometric:1.1.0")
 
+    implementation("androidx.compose.material:material-icons-extended")
+
     // Room 3
     val roomVersion = "3.0.3"
 

@@ -1,32 +1,49 @@
 package com.example.keysafe.ui.screens.credential
 
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import android.os.PersistableBundle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.keysafe.ui.credential.CredentialDetailUiState
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.launch
 
 @Composable
 fun CredentialDetailsScreen(
@@ -37,6 +54,10 @@ fun CredentialDetailsScreen(
 ) {
     var showPassword by remember(state.id) { mutableStateOf(false) }
     var confirmDelete by remember(state.id) { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     val deletingCredential = state.draft
     if (confirmDelete && deletingCredential != null) {
@@ -67,7 +88,9 @@ fun CredentialDetailsScreen(
         )
     }
 
-    Scaffold { padding ->
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -93,10 +116,33 @@ fun CredentialDetailsScreen(
                 DetailLine("Usuário / e-mail", value.username)
                 HorizontalDivider()
                 Text("Senha", style = MaterialTheme.typography.labelLarge)
-                Text(
-                    if (showPassword) value.password else "••••••••",
-                    style = MaterialTheme.typography.bodyLarge
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        if (showPassword) value.password else "••••••••",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = {
+                            copySensitiveText(context, "Senha da credencial", value.password)
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    "Senha copiada para a área de transferência."
+                                )
+                            }
+                        },
+                        enabled = value.password.isNotEmpty() && !state.busy
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ContentCopy,
+                            contentDescription = "Copiar senha"
+                        )
+                    }
+                }
                 TextButton(onClick = { showPassword = !showPassword }) {
                     Text(if (showPassword) "Ocultar senha" else "Mostrar senha")
                 }
@@ -143,3 +189,15 @@ private fun DetailLine(label: String, value: String) {
 
 private fun formatDate(timestamp: Long): String =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(timestamp))
+
+/** Copia como conteúdo sensível para evitar prévias da senha em versões compatíveis do Android. */
+private fun copySensitiveText(context: Context, label: String, value: String) {
+    val clip = ClipData.newPlainText(label, value)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        clip.description.extras = PersistableBundle().apply {
+            putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+        }
+    }
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(clip)
+}
