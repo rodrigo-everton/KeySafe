@@ -2,17 +2,26 @@ package com.example.keysafe.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -25,8 +34,14 @@ fun SettingsScreen(
     biometricBusy: Boolean = false,
     biometricMessage: String? = null,
     onEnableBiometric: () -> Unit = {},
-    onDisableBiometric: () -> Unit = {}
+    onDisableBiometric: () -> Unit = {},
+    onFactoryReset: () -> Boolean = { false }
 ) {
+    var showWipeDialog by remember { mutableStateOf(false) }
+    var confirmationText by remember { mutableStateOf("") }
+    var wipeError by remember { mutableStateOf<String?>(null) }
+    var wipeRequested by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -94,6 +109,101 @@ fun SettingsScreen(
         SettingInfoCard(
             title = "Sobre o aplicativo",
             description = "KeySafe — Projeto Integrador 3. Gerenciador de senhas offline desenvolvido em Kotlin e Jetpack Compose."
+        )
+
+        // Ação separada das configurações comuns e visualmente marcada como destrutiva.
+        SettingInfoCard(
+            title = "Autodestruição dos dados",
+            description = "Apaga os dados locais do KeySafe e restaura o estado de primeiro uso. O aplicativo continuará instalado. Esta operação é permanente e não pode ser desfeita."
+        )
+        Button(
+            onClick = {
+                confirmationText = ""
+                wipeError = null
+                wipeRequested = false
+                showWipeDialog = true
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError
+            )
+        ) {
+            Text("Apagar todos os dados do aplicativo")
+        }
+    }
+
+    if (showWipeDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!wipeRequested) {
+                    showWipeDialog = false
+                    confirmationText = ""
+                    wipeError = null
+                }
+            },
+            title = { Text("Apagar permanentemente?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Esta ação apagará todas as credenciais, a senha mestra, a chave do cofre, " +
+                            "a configuração biométrica, o banco de dados, as preferências e os arquivos locais."
+                    )
+                    Text(
+                        "O KeySafe continuará instalado. Na próxima abertura, será exibida a tela " +
+                            "de configuração inicial, como no primeiro uso. Não será possível recuperar os dados."
+                    )
+                    OutlinedTextField(
+                        value = confirmationText,
+                        onValueChange = {
+                            confirmationText = it
+                            wipeError = null
+                        },
+                        enabled = !wipeRequested,
+                        singleLine = true,
+                        label = { Text("Digite APAGAR para confirmar") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (wipeError != null) {
+                        Text(
+                            wipeError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    if (wipeRequested) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CircularProgressIndicator()
+                            Text("Solicitação aceita. Encerrando o KeySafe…")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = confirmationText == "APAGAR" && !wipeRequested,
+                    onClick = {
+                        wipeRequested = true
+                        val accepted = onFactoryReset()
+                        if (!accepted) {
+                            wipeRequested = false
+                            wipeError = "O Android não conseguiu iniciar a limpeza dos dados. Nenhum dado foi apagado. Tente novamente."
+                        }
+                    }
+                ) {
+                    Text("Apagar permanentemente", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !wipeRequested,
+                    onClick = {
+                        showWipeDialog = false
+                        confirmationText = ""
+                        wipeError = null
+                    }
+                ) { Text("Cancelar") }
+            }
         )
     }
 }

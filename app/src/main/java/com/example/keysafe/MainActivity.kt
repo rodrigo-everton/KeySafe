@@ -1,5 +1,6 @@
 package com.example.keysafe
 
+import android.app.ActivityManager
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
@@ -46,9 +47,35 @@ class MainActivity : FragmentActivity() {
                     authViewModel = authViewModel,
                     credentialViewModel = credentialViewModel,
                     onBiometricUnlock = { showBiometricPrompt(enrolling = false) },
-                    onEnableBiometric = { showBiometricPrompt(enrolling = true) }
+                    onEnableBiometric = { showBiometricPrompt(enrolling = true) },
+                    onFactoryReset = ::requestFactoryReset
                 )
             }
+        }
+    }
+
+    /**
+     * Solicita ao Android a limpeza completa dos dados deste aplicativo.
+     * Se o sistema aceitar, o processo será encerrado e o próximo início
+     * voltará ao fluxo de criação da senha mestra.
+     */
+    private fun requestFactoryReset(): Boolean {
+        return try {
+            val activityManager = getSystemService(ActivityManager::class.java)
+                ?: return false
+            val accepted = activityManager.clearApplicationUserData()
+            if (accepted) {
+                // Limpa dados sensíveis em memória antes de encerrar a Activity.
+                if (::biometricPrompt.isInitialized) {
+                    biometricPrompt.cancelAuthentication()
+                }
+                credentialViewModel.stopSession()
+                authViewModel.lock()
+                finishAndRemoveTask()
+            }
+            accepted
+        } catch (_: Exception) {
+            false
         }
     }
 

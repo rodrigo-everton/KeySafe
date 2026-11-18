@@ -1,42 +1,67 @@
-# KeySafe — ícone para copiar senhas
+# KeySafe — Autodestruição / redefinição completa dos dados
 
-Esta atualização adiciona um botão de ícone `content_copy` diretamente ao lado da senha nas telas:
+Esta entrega adiciona às Configurações um botão que solicita ao Android a limpeza de todos os dados de usuário do próprio aplicativo, retornando o KeySafe ao estado de primeiro uso.
 
-- `PasswordGeneratorScreen.kt`: copia a senha gerada a partir do cartão de resultado. O botão de texto largo "Copiar senha" foi removido.
-- `CredentialDetailsScreen.kt`: copia a senha da credencial aberta, mesmo quando ela está visualmente oculta. O valor continua oculto na tela até o usuário escolher "Mostrar senha".
+## Arquivos incluídos
+
+```text
+app/src/main/java/com/example/keysafe/
+├── MainActivity.kt                                  [SUBSTITUI]
+├── navigation/AppNavigation.kt                     [SUBSTITUI]
+└── ui/screens/settings/SettingsScreen.kt           [SUBSTITUI]
+```
+
+Não há alteração no esquema Room, nos modelos, na criptografia, na senha mestra ou no `BiometricVaultStore`. Nenhuma dependência Gradle ou permissão nova é necessária.
+
+## Como funciona
+
+1. O usuário precisa estar com o cofre desbloqueado para acessar Configurações.
+2. Pressiona **Apagar todos os dados do aplicativo**.
+3. Um diálogo explica o que será apagado e exige digitar exatamente `APAGAR`.
+4. `MainActivity` chama `ActivityManager.clearApplicationUserData()`.
+5. Se o Android aceitar a solicitação, o app limpa a chave de sessão em memória, cancela um prompt biométrico pendente e encerra a tarefa.
+6. Na próxima abertura, o arquivo `keysafe_master_v1.bin` não existe e `MasterPasswordViewModel` identifica `AuthMode.CREATE`, exibindo a criação da senha mestra.
+
+## Dados removidos pelo Android
+
+A API oficial limpa os dados privados do app e a área privada do armazenamento externo, incluindo o banco Room (`keysafe_credentials.db`), arquivos em `noBackupFilesDir` (senha mestra e blob biométrico), SharedPreferences/DataStore, arquivos locais e cache. A limpeza do Android também remove entradas Android Keystore vinculadas ao UID do aplicativo. O APK continua instalado; dados OBB não são removidos (este projeto não usa OBB).
+
+Não é necessário apagar manualmente o Room nem chamar `BiometricVaultStore.disable()`: a limpeza do usuário é mais abrangente e o Android remove os dados/Keystore vinculados ao aplicativo.
 
 ## Instalação
 
-Substitua os dois arquivos nos caminhos correspondentes:
+1. Faça commit ou backup do estado atual.
+2. Extraia o ZIP.
+3. Copie a pasta `app/src/main/java/com/example/keysafe/` para a mesma localização do projeto, substituindo os três arquivos indicados.
+4. Faça Gradle Sync e Build no Android Studio.
 
-```text
-app/src/main/java/com/example/keysafe/ui/screens/generator/PasswordGeneratorScreen.kt
-app/src/main/java/com/example/keysafe/ui/screens/credential/CredentialDetailsScreen.kt
+## Testes manuais
+
+- [ ] Abra o KeySafe, crie uma senha mestra e cadastre credenciais fictícias.
+- [ ] Ative biometria, se disponível no dispositivo.
+- [ ] Abra Configurações e pressione o botão de autodestruição.
+- [ ] Feche o diálogo: nenhum dado deve ser removido.
+- [ ] Reabra o diálogo e digite algo diferente de `APAGAR`: a confirmação deve permanecer desabilitada.
+- [ ] Digite exatamente `APAGAR` e confirme.
+- [ ] O aplicativo deve encerrar a tarefa.
+- [ ] Abra o KeySafe novamente: deve aparecer a criação de senha mestra, como no primeiro uso.
+- [ ] Confirme que as credenciais antigas não aparecem e que a biometria precisa ser configurada novamente.
+
+A API retorna `true` quando o Android aceita a solicitação de limpeza e `false` quando não consegue iniciá-la. Se retornar `false`, o app permanece aberto e mostra um erro; a sessão não é bloqueada antes da confirmação de que a solicitação foi aceita.
+
+## Commit sugerido
+
+```bash
+git add app/src/main/java/com/example/keysafe/MainActivity.kt \
+        app/src/main/java/com/example/keysafe/navigation/AppNavigation.kt \
+        app/src/main/java/com/example/keysafe/ui/screens/settings/SettingsScreen.kt
+
+git diff --check
+git commit -m "feat(security): add full app data wipe and factory reset"
 ```
 
-## Dependência necessária
+## Limites
 
-Os arquivos usam `Icons.Outlined.ContentCopy`. Se ainda não tiver a biblioteca de ícones estendidos no projeto, adicione em `app/build.gradle.kts`:
-
-```kotlin
-implementation("androidx.compose.material:material-icons-extended")
-```
-
-Se o projeto utiliza Compose BOM, não é necessário informar uma versão nessa dependência. Mantenha o BOM e as demais versões já configuradas no projeto.
-
-## Comportamento de segurança
-
-- A cópia usa o `ClipboardManager` do Android.
-- No Android 13 (API 33) ou superior, o conteúdo é marcado como sensível com `ClipDescription.EXTRA_IS_SENSITIVE`, reduzindo a exposição em prévias da área de transferência.
-- Um Snackbar confirma a cópia.
-- O aplicativo não limpa a área de transferência automaticamente, para não apagar conteúdo que o usuário possa ter copiado depois.
-
-## Validação
-
-1. Abra o gerador, gere uma senha e toque no ícone de copiar.
-2. Cole em um campo de texto de teste e confirme que o conteúdo corresponde à senha gerada.
-3. Abra os detalhes de uma credencial, mantenha a senha oculta e toque no ícone.
-4. Cole em um campo de texto de teste e confirme que a senha correta foi copiada.
-5. Confirme que o Snackbar aparece nas duas telas.
-
-A atualização foi conferida estruturalmente, mas deve ser compilada e testada no Android Studio dentro do projeto completo.
+- A limpeza não desinstala o APK nem remove arquivos que o usuário tenha exportado/copiad​o para diretórios públicos ou outros aplicativos.
+- A operação é irreversível. Não existe restauração automática após a limpeza.
+- Este pacote foi preparado a partir dos arquivos da implementação biométrica anterior; a compilação Android completa e a limpeza real precisam ser verificadas no Android Studio/dispositivo.

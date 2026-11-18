@@ -30,7 +30,8 @@ fun AppNavigation(
     authViewModel: MasterPasswordViewModel,
     credentialViewModel: CredentialViewModel,
     onBiometricUnlock: () -> Unit,
-    onEnableBiometric: () -> Unit
+    onEnableBiometric: () -> Unit,
+    onFactoryReset: () -> Boolean
 ) {
     val authState = authViewModel.uiState
     if (authState.mode != AuthMode.UNLOCKED) {
@@ -158,7 +159,8 @@ fun AppNavigation(
                 biometricBusy = authViewModel.biometricBusy,
                 biometricMessage = authViewModel.biometricMessage,
                 onEnableBiometric = onEnableBiometric,
-                onDisableBiometric = authViewModel::disableBiometrics
+                onDisableBiometric = authViewModel::disableBiometrics,
+                onFactoryReset = onFactoryReset
             )
         }
     }
